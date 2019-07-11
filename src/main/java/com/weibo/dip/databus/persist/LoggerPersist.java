@@ -2,7 +2,7 @@ package com.weibo.dip.databus.persist;
 
 import com.weibo.dip.databus.core.Configuration;
 import com.weibo.dip.databus.core.Metric;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

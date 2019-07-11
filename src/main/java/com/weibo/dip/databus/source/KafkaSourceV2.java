@@ -1,22 +1,28 @@
 package com.weibo.dip.databus.source;
 
 import com.google.common.base.Preconditions;
-import com.weibo.dip.databus.core.*;
+import com.weibo.dip.databus.core.Configuration;
+import com.weibo.dip.databus.core.Constants;
+import com.weibo.dip.databus.core.Message;
+import com.weibo.dip.databus.core.Source;
 import kafka.consumer.Consumer;
 import kafka.consumer.ConsumerConfig;
 import kafka.consumer.KafkaStream;
 import kafka.javaapi.consumer.ConsumerConnector;
 import kafka.message.MessageAndMetadata;
-import org.apache.commons.lang.ArrayUtils;
-import org.apache.commons.lang.CharEncoding;
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.exception.ExceptionUtils;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.CharEncoding;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.UnsupportedEncodingException;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -60,7 +66,6 @@ public class KafkaSourceV2 extends Source {
 
     autoOffsetReset = conf.get(AUTO_OFFSET_RESET);
 
-    metric.config(this, conf);
   }
 
   @Override
@@ -149,17 +154,13 @@ public class KafkaSourceV2 extends Source {
           }
 
           Message message = new Message(topic, data);
-          metric.collectSuccessCountAndRate(name, message,"Source");
           deliver(message);
         }
       } catch (Exception e) {
         String subject = String.format("%s %s stopped", name, Thread.currentThread().getName());
-        String content = String.format("%s \n%s", subject, ExceptionUtils.getFullStackTrace(e));
+        String content = String.format("%s \n%s", subject, ExceptionUtils.getStackTrace(e));
         LOGGER.error(content);
 
-        if (Alarm.alarmEnable()) {
-          Alarm.sendAlarm(subject, content);
-        }
       }
       LOGGER.info(name + " streamer " + Thread.currentThread().getName() + " stopped");
     }

@@ -2,7 +2,7 @@ package com.weibo.dip.databus.core;
 
 import com.google.common.base.Preconditions;
 import com.weibo.dip.databus.store.Store;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,26 +63,14 @@ public class Pipeline implements Configurable, Lifecycle {
             Constants.PIPELINE_NAME + " can't be empty");
 
         /*
-            sink
+            source
          */
-        String sinkName = conf.get(Constants.PIPELINE_SINK);
-        Preconditions.checkState(StringUtils.isNotEmpty(sinkName),
-            Constants.PIPELINE_SINK + " can't be empty");
+        String sourceName = conf.get(Constants.PIPELINE_SOURCE);
+        Preconditions.checkState(StringUtils.isNotEmpty(sourceName),
+            name + " " + Constants.PIPELINE_SOURCE + " can't be empty");
 
-        sink = (Sink) Class.forName(sinkName).newInstance();
-        sink.setConf(conf);
-
-        /*
-            store
-         */
-        String storeName = conf.get(Constants.PIPELINE_STORE);
-        Preconditions.checkState(StringUtils.isNotEmpty(storeName),
-            Constants.PIPELINE_STORE + " can't be empty");
-
-        store = (Store) Class.forName(storeName).newInstance();
-        store.setConf(conf);
-
-
+        source = (Source) Class.forName(sourceName).newInstance();
+        source.setConf(conf);
 
         /*
            converter
@@ -94,19 +82,31 @@ public class Pipeline implements Configurable, Lifecycle {
         converter = (Converter) Class.forName(converterName).newInstance();
         converter.setConf(conf);
 
-
-         /*
-            source
+        /*
+            store
          */
-        String sourceName = conf.get(Constants.PIPELINE_SOURCE);
-        Preconditions.checkState(StringUtils.isNotEmpty(sourceName),
-            name + " " + Constants.PIPELINE_SOURCE + " can't be empty");
+        String storeName = conf.get(Constants.PIPELINE_STORE);
+        Preconditions.checkState(StringUtils.isNotEmpty(storeName),
+            Constants.PIPELINE_STORE + " can't be empty");
 
-        source = (Source) Class.forName(sourceName).newInstance();
+        store = (Store) Class.forName(storeName).newInstance();
+        store.setConf(conf);
+
+        /*
+            sink
+         */
+        String sinkName = conf.get(Constants.PIPELINE_SINK);
+        Preconditions.checkState(StringUtils.isNotEmpty(sinkName),
+            Constants.PIPELINE_SINK + " can't be empty");
+
+        sink = (Sink) Class.forName(sinkName).newInstance();
+        sink.setConf(conf);
+
+        /*
+            link
+         */
         source.link(converter);
         source.link(sink);
-        source.setConf(conf);
-
 
         sink.link(store);
         store.link(sink);

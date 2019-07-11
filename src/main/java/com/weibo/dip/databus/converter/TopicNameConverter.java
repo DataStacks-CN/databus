@@ -4,9 +4,9 @@ import com.weibo.dip.databus.core.Configuration;
 import com.weibo.dip.databus.core.Constants;
 import com.weibo.dip.databus.core.Converter;
 import com.weibo.dip.databus.core.Message;
-import org.apache.commons.collections.MapUtils;
-import org.apache.commons.lang.ArrayUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

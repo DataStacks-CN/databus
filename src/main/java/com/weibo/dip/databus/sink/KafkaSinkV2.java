@@ -5,16 +5,15 @@ import com.weibo.dip.databus.core.Configuration;
 import com.weibo.dip.databus.core.Constants;
 import com.weibo.dip.databus.core.Message;
 import com.weibo.dip.databus.core.Sink;
-
-import java.util.HashMap;
-import java.util.Map;
-
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Created by yurun on 17/8/31.

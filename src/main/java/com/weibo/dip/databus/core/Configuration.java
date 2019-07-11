@@ -1,8 +1,7 @@
 package com.weibo.dip.databus.core;
 
-import org.apache.commons.lang.CharEncoding;
-
 import java.io.*;
+import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -20,6 +19,7 @@ public class Configuration {
     private ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public Configuration() {
+
     }
 
     public Configuration(Properties conf) {
@@ -36,8 +36,7 @@ public class Configuration {
         BufferedReader reader = null;
 
         try {
-            reader = new BufferedReader(
-                new InputStreamReader(in, CharEncoding.UTF_8));
+            reader = new BufferedReader(new InputStreamReader(in, Charset.forName("UTF-8")));
 
             conf.load(reader);
         } finally {
@@ -87,6 +86,26 @@ public class Configuration {
         }
 
         return value;
+    }
+
+    public String get(String key, String defaultValue){
+        String value = get(key);
+
+        if(value != null){
+            return value;
+        }
+
+        return defaultValue;
+    }
+
+    public Integer getInteger(String key, Integer defaultValue){
+        String value = get(key);
+
+        if(value != null){
+            return Integer.parseInt(value.trim());
+        }
+
+        return defaultValue;
     }
 
 }

@@ -5,11 +5,11 @@ import com.weibo.dip.databus.core.Configuration;
 import com.weibo.dip.databus.core.Constants;
 import com.weibo.dip.databus.core.Metric;
 import com.weibo.dip.databus.core.Pipeline;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.exception.ExceptionUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,7 +34,7 @@ public class DatabusDriver {
 
       supervisor.start();
     } catch (Exception e) {
-      LOGGER.error("Databus server start error: {}", ExceptionUtils.getFullStackTrace(e));
+      LOGGER.error("Databus server start error: {}", ExceptionUtils.getStackTrace(e));
 
       return;
     }
@@ -54,7 +54,7 @@ public class DatabusDriver {
 
     private Map<File, Pipeline> pipelines = new HashMap<>();
 
-    public Supervisor(Configuration databusConf) {
+    private Supervisor(Configuration databusConf) {
       this.databusConf = databusConf;
     }
 
@@ -71,7 +71,7 @@ public class DatabusDriver {
         pipelines.put(pipelineConf, pipeline);
       } catch (Exception e) {
         LOGGER.error("start pipeline with " + pipelineConf.getPath() + " error: "
-            + ExceptionUtils.getFullStackTrace(e));
+            + ExceptionUtils.getStackTrace(e));
       }
     }
 
@@ -86,7 +86,7 @@ public class DatabusDriver {
         pipeline.stop();
       } catch (Exception e) {
         LOGGER.error("stop pipeline with " + pipelineConf.getPath() + " error: "
-            + ExceptionUtils.getFullStackTrace(e));
+            + ExceptionUtils.getStackTrace(e));
       }
     }
 
@@ -207,7 +207,7 @@ public class DatabusDriver {
 
         metric.stop();
       } catch (Exception e) {
-        LOGGER.error("Supervisor run error: {}", ExceptionUtils.getFullStackTrace(e));
+        LOGGER.error("Supervisor run error: {}", ExceptionUtils.getStackTrace(e));
       }
 
       LOGGER.info("Supervisor stopped");

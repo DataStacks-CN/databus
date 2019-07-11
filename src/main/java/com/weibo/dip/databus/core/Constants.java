@@ -7,8 +7,6 @@ public class Constants {
 
     public static final String DATABUS_PROPERTIES = "databus.properties";
 
-    public static final String ALARM_PROPERTIES = "alarm.properties";
-
     public static final String PIPELINE_CONF = "pipeline.conf";
 
     public static final String DATABUS_STOPFILE = "databus.stopfile";
@@ -32,7 +30,5 @@ public class Constants {
     public static final String COMMA = ",";
 
     public static final String COLON = ":";
-
-    public static final String SEMICOLON=";";
 
 }
