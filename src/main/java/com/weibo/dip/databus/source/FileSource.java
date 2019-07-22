@@ -12,6 +12,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -36,6 +38,9 @@ public class FileSource extends Source {
   private String includePattern;
   private int scanInterval;
   private int flushInterval;
+  private int flushInitDelay;
+  private int retention;
+  private String readOrder;
 
   private File targetDirectory;
   private File offsetFile;
@@ -60,7 +65,7 @@ public class FileSource extends Source {
       // 若category offset文件不存在，则创建
       offsetFile = new File(String.format("%s/%s.offset", fileDirectory, category));
 
-      if(offsetFile.createNewFile()){
+      if (offsetFile.createNewFile()) {
         LOGGER.info("{} does not exist and was successfully created", offsetFile);
       } else {
         LOGGER.info("{} already exists", offsetFile);
@@ -78,8 +83,20 @@ public class FileSource extends Source {
     scanInterval = conf.getInteger(SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL);
     LOGGER.info("Property: {}={}", SCAN_INTERVAL, scanInterval);
 
+    flushInitDelay = conf.getInteger(FLUSH_INIT_DELAY, DEFAULT_FLUSH_INIT_DELAY);
+    LOGGER.info("Property: {}={}", FLUSH_INIT_DELAY, flushInitDelay);
+
     flushInterval = conf.getInteger(FLUSH_INTERVAL, DEFAULT_FLUSH_INTERVAL);
     LOGGER.info("Property: {}={}", FLUSH_INTERVAL, flushInterval);
+
+    retention = conf.getInteger(RETENTION, DEFAULT_RETENTION);
+    LOGGER.info("Property: {}={}", RETENTION, retention);
+
+    readOrder = conf.get(READ_ORDER, DEFAULT_READ_ORDER);
+    if(!"desc".equals(readOrder) && !"asc".equals(readOrder)){
+      throw new Exception(READ_ORDER + " should be desc or asc");
+    }
+    LOGGER.info("Property: {}={}", READ_ORDER, readOrder);
   }
 
   @Override
@@ -108,19 +125,21 @@ public class FileSource extends Source {
     offsetRecorder =
         Executors.newSingleThreadScheduledExecutor(
             new ThreadFactoryBuilder().setNameFormat("offsetRecorder-pool-%d").build());
-    offsetRecorder.scheduleWithFixedDelay(new OffsetRecorderRunnable(), 10, flushInterval, TimeUnit.SECONDS);
+    offsetRecorder.scheduleWithFixedDelay(
+        new OffsetRecorderRunnable(), flushInitDelay, flushInterval, TimeUnit.SECONDS);
 
     LOGGER.info("{} started", name);
   }
 
   private void loadOffsetFile() {
     BufferedReader in = null;
+    Pattern pattern = Pattern.compile(FILE_STATUS_PATTERN);
     try {
       in = new BufferedReader(new InputStreamReader(new FileInputStream(offsetFile)));
 
       String line;
       while ((line = in.readLine()) != null) {
-        Matcher matcher = Pattern.compile(FILE_STATUS_PATTERN).matcher(line);
+        Matcher matcher = pattern.matcher(line);
 
         if (matcher.find()) {
           FileStatus fileStatus = new FileStatus();
@@ -133,16 +152,15 @@ public class FileSource extends Source {
         }
       }
       LOGGER.info("initial map size: {}", fileStatusMap.size());
-    }catch (Exception e) {
-      LOGGER.error("read offsetFile error: {}", ExceptionUtils.getStackTrace(e));
+    } catch (Exception e) {
+      throw new RuntimeException("read offsetFile error: " + ExceptionUtils.getStackTrace(e));
     } finally {
       try {
         if (in != null) {
           in.close();
         }
       } catch (IOException e) {
-        LOGGER.error(
-            "close offsetFile BufferedReader error: {}", ExceptionUtils.getStackTrace(e));
+        LOGGER.error("close offsetFile BufferedReader error: {}", ExceptionUtils.getStackTrace(e));
       }
     }
   }
@@ -182,12 +200,15 @@ public class FileSource extends Source {
     }
     LOGGER.info("{} offsetRecorder stopped", name);
 
+    // 确保最新的fileStatusMap内容刷到磁盘
+    new OffsetRecorderRunnable().run();
+
     LOGGER.info("{} stopped", name);
   }
 
-
   private class FileScannerRunnable implements Runnable {
     LinkedBlockingQueue<File> fileQueue;
+    Comparator<File> comparator = ascComparator;
 
     private FileScannerRunnable(LinkedBlockingQueue<File> fileQueue) {
       this.fileQueue = fileQueue;
@@ -195,35 +216,57 @@ public class FileSource extends Source {
 
     @Override
     public void run() {
-      try{
+      try {
         HashSet<String> dirSet = new HashSet<>();
+        ArrayList<File> files = new ArrayList<>();
+
         for (File item : targetDirectory.listFiles()) {
           // 筛选符合正则的文件
           if (item.isFile() && item.getName().matches(includePattern)) {
             String filePath = item.getPath();
             dirSet.add(filePath);
 
-            // 把未读的或者未读完的文件入队
+            // 筛选未读的或者未读完的文件
             if (!fileStatusMap.containsKey(filePath)
                 || (fileStatusMap.containsKey(filePath)
                     && !(fileStatusMap.get(filePath).isCompleted()))) {
-              try {
-                fileQueue.put(item);
-                LOGGER.info("{} enqueue", item);
-              } catch (InterruptedException e) { // ???能否移到外面
-                LOGGER.error("{} enqueue, but interrupted", item);
+              files.add(item);
+            }
+
+            // 删除目录下过期文件
+            if (System.currentTimeMillis() - item.lastModified() > retention * 1000) {
+              if (item.delete()) {
+                LOGGER.info("deleted expired file {}", item);
+              } else {
+                LOGGER.error("delete expired file {} failed", item);
               }
             }
           }
         }
+
+        // 根据策略把未读的文件入队
+        if("desc".equals(readOrder)) {
+          comparator = descComparator;
+        }
+        files.sort(comparator);
+
+        for(File item : files){
+          try {
+            fileQueue.put(item);
+            LOGGER.info("{} enqueue", item);
+          } catch (InterruptedException e) {
+            LOGGER.error("{} enqueue, but interrupted", item);
+          }
+        }
+
         LOGGER.info("queue size: {}", fileQueue.size());
 
-        // 删去map中过期的文件
+        // 删除map中过期文件
         for (Map.Entry<String, FileStatus> entry : fileStatusMap.entrySet()) {
 
           if (!dirSet.contains(entry.getKey())) {
             fileStatusMap.remove(entry.getKey());
-            LOGGER.info("remove expired file: {} from map", entry.getKey());
+            LOGGER.info("removed expired file {} from map", entry.getKey());
           }
         }
         LOGGER.info("map size: {}", fileStatusMap.size());
@@ -234,6 +277,20 @@ public class FileSource extends Source {
     }
   }
 
+  Comparator<File> descComparator = new Comparator<File>() {
+    @Override
+    public int compare(File o1, File o2) {
+      return (int)(o2.lastModified() - o1.lastModified());
+    }
+  };
+
+  Comparator<File> ascComparator = new Comparator<File>() {
+    @Override
+    public int compare(File o1, File o2) {
+      return (int)(o1.lastModified() - o2.lastModified());
+    }
+  };
+
   private class FileReaderRunnable implements Runnable {
     LinkedBlockingQueue<File> fileQueue;
 
@@ -243,24 +300,29 @@ public class FileSource extends Source {
 
     @Override
     public void run() {
-      File item;
-      BufferedReader in = null;
-      try {
-        while (!fileReaderClosed.get()) {
-          item = fileQueue.poll(1, TimeUnit.SECONDS);
+      while (!fileReaderClosed.get()) {
+        RandomAccessFile raf = null;
 
-          if (item == null || !item.exists()) {
+        try {
+          File item = fileQueue.poll(1, TimeUnit.SECONDS);
+
+          if (item == null) {
+            continue;
+          } else if (!item.exists()) {
+            LOGGER.error("{} not exists, may be deleted before read", item);
+            continue;
+          } else if (!item.isFile()) {
+            LOGGER.error("{} not file", item);
             continue;
           }
 
           LOGGER.info("{} dequeue", item);
           String filePath = item.getPath();
+
+          raf = new RandomAccessFile(filePath, "r");
+
           FileStatus fileStatus;
-
-          in = new BufferedReader(new InputStreamReader(new FileInputStream(item)));
-
           String line;
-          long number = 0;
           long initOffset;
 
           // 处理未读文件
@@ -270,7 +332,7 @@ public class FileSource extends Source {
 
             fileStatusMap.put(filePath, fileStatus);
 
-            initOffset = -1;
+            initOffset = 0;
 
             // 处理未读完文件
           } else {
@@ -278,28 +340,28 @@ public class FileSource extends Source {
             initOffset = fileStatus.getOffset();
           }
 
-          while ((line = in.readLine()) != null && !fileReaderClosed.get()) {
-            if (number > initOffset) {
-              Message message = new Message(category, line);
-              deliver(message);
+          raf.seek(initOffset);
+          while ((line = raf.readLine()) != null && !fileReaderClosed.get()) {
+            Message message = new Message(category, line);
+            deliver(message);
 
-              fileStatus.setOffset(number++);
+            fileStatus.setOffset(raf.getFilePointer());
+          }
+
+          if (!fileReaderClosed.get()) {
+            fileStatus.setCompleted(true);
+            LOGGER.info("read {} completed", filePath);
+          }
+        } catch (Exception e) {
+          LOGGER.error("read logFile error: {}", ExceptionUtils.getStackTrace(e));
+        } finally {
+          try {
+            if (raf != null) {
+              raf.close();
             }
+          } catch (IOException e) {
+            LOGGER.error("close RandomAccessFile error: {}", ExceptionUtils.getStackTrace(e));
           }
-
-          fileStatus.setCompleted(true);
-          LOGGER.info("read {} completed", filePath);
-        }
-
-      } catch (Exception e) {
-        LOGGER.error("read logFile error: {}", ExceptionUtils.getStackTrace(e));
-      } finally {
-        try {
-          if (in != null) {
-            in.close();
-          }
-        } catch (IOException e) {
-          LOGGER.error("close BufferedReader error: {}", ExceptionUtils.getStackTrace(e));
         }
       }
     }
@@ -317,7 +379,7 @@ public class FileSource extends Source {
           sb.append(fileStatus).append("\n");
         }
 
-        if(sb.length() > 0){
+        if (sb.length() > 0) {
           sb.deleteCharAt(sb.length() - 1);
         }
 
