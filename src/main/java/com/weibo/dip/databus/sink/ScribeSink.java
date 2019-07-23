@@ -33,7 +33,6 @@ public class ScribeSink extends Sink {
   private static final Logger LOGGER = LoggerFactory.getLogger(ScribeSink.class);
   private String host;
   private int port;
-  private int batchSize;
 
   private ConcurrentHashMap<Long, NetworkSender> senders = new ConcurrentHashMap<>();
 
@@ -64,9 +63,6 @@ public class ScribeSink extends Sink {
 
     port = conf.getInteger(PORT, DEFAULT_PORT);
     LOGGER.info("Property: {}={}", PORT, port);
-
-    batchSize = conf.getInteger(BATCH_SIZE, DEFAULT_BATCH_SIZE);
-    LOGGER.info("Property: {}={}", BATCH_SIZE, batchSize);
   }
 
   @Override
@@ -93,7 +89,6 @@ public class ScribeSink extends Sink {
     TTransport transport = null;
 
     public NetworkSender(){
-
       try {
         transport = new TFramedTransport(new TSocket(new Socket(host, port)));
         client = new Scribe.Client(new TBinaryProtocol(transport));
@@ -108,20 +103,11 @@ public class ScribeSink extends Sink {
       }
     }
 
-    int number = 0;
-    List<LogEntry> entrys = new ArrayList<>();
-    public void send(LogEntry entry){  //异常处理？？？
-      entrys.add(entry);
-
+    public void send(LogEntry entry){
       try{
-        if(number ++ > batchSize){
-          ResultCode result = client.Log(entrys);
-          if (result.getValue() == 0) {
-            LOGGER.info("send {} records", number);
-            number = 0;
-            entrys.clear();
-          }
-        }
+        List<LogEntry> entries = new ArrayList<>();
+        entries.add(entry);
+        client.Log(entries);
       }catch (Exception e){
         LOGGER.info("{}", ExceptionUtils.getStackTrace(e));
       }
@@ -130,10 +116,8 @@ public class ScribeSink extends Sink {
     @Override
     public void close() {
       try {
-        while (client.recv_Log().getValue() == 0){
-          if(transport != null){
-            transport.close();
-          }
+        if(transport != null){
+          transport.close();
         }
       } catch (Exception e) {
         LOGGER.info("close socket error: {}", ExceptionUtils.getStackTrace(e));

@@ -280,8 +280,6 @@ public class FileSource extends Source {
 
         LOGGER.info("queue size: {}", fileQueue.size());
 
-
-
         // 删除map中过期文件
         for (Map.Entry<String, FileStatus> entry : fileStatusMap.entrySet()) {
 
@@ -291,7 +289,6 @@ public class FileSource extends Source {
           }
         }
         LOGGER.info("map size: {}", fileStatusMap.size());
-
 
       } catch (Exception e) {
         LOGGER.error("read offsetFile error: {}", ExceptionUtils.getStackTrace(e));
