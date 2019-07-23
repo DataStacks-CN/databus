@@ -1,5 +1,6 @@
 package com.weibo.dip.databus.source;
 
+import com.codahale.metrics.*;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.weibo.dip.databus.core.Configuration;
@@ -44,6 +45,7 @@ public class FileSource extends Source {
 
   private File targetDirectory;
   private File offsetFile;
+  private Meter meter;
 
   @Override
   public void setConf(Configuration conf) throws Exception {
@@ -93,11 +95,28 @@ public class FileSource extends Source {
     LOGGER.info("Property: {}={}", RETENTION, retention);
 
     readOrder = conf.get(READ_ORDER, DEFAULT_READ_ORDER);
-    if(!"desc".equals(readOrder) && !"asc".equals(readOrder)){
+    if (!"desc".equals(readOrder) && !"asc".equals(readOrder)) {
       throw new Exception(READ_ORDER + " should be desc or asc");
     }
     LOGGER.info("Property: {}={}", READ_ORDER, readOrder);
+
+    metric.register(MetricRegistry.name(name, "pending-files", "size"), new Gauge<Integer>() {
+      @Override
+      public Integer getValue() {
+        return fileQueue.size();
+      }
+    });
+
+    metric.register(MetricRegistry.name(name, "handled-and-handling-files", "size"), new Gauge<Integer>() {
+      @Override
+      public Integer getValue() {
+        return fileStatusMap.size();
+      }
+    });
+
+    meter = metric.meter(MetricRegistry.name(name, "read-lines", "tps"));
   }
+
 
   @Override
   public void start() {
@@ -261,6 +280,8 @@ public class FileSource extends Source {
 
         LOGGER.info("queue size: {}", fileQueue.size());
 
+
+
         // 删除map中过期文件
         for (Map.Entry<String, FileStatus> entry : fileStatusMap.entrySet()) {
 
@@ -270,6 +291,7 @@ public class FileSource extends Source {
           }
         }
         LOGGER.info("map size: {}", fileStatusMap.size());
+
 
       } catch (Exception e) {
         LOGGER.error("read offsetFile error: {}", ExceptionUtils.getStackTrace(e));
@@ -344,6 +366,7 @@ public class FileSource extends Source {
           while ((line = raf.readLine()) != null && !fileReaderClosed.get()) {
             Message message = new Message(category, line);
             deliver(message);
+            meter.mark();
 
             fileStatus.setOffset(raf.getFilePointer());
           }

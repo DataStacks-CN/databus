@@ -1,9 +1,6 @@
 package com.weibo.dip.databus.core;
 
-import com.codahale.metrics.Histogram;
-import com.codahale.metrics.Meter;
-import com.codahale.metrics.MetricRegistry;
-import com.codahale.metrics.Timer;
+import com.codahale.metrics.*;
 import com.google.common.base.Preconditions;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -15,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -28,6 +26,7 @@ public class Metric implements Configurable, Lifecycle {
 
     private static final String METRIC_PERSIST_INTERVAL = "metric.persist.interval";
     private static final String METRIC_PERSIST_CLASS = "metric.persist.class";
+    private static final String METRIC_REPORTER_INTERVAL = "metric.reporter.interval";
 
     private ReadWriteLock lock = new ReentrantReadWriteLock();
 
@@ -37,9 +36,13 @@ public class Metric implements Configurable, Lifecycle {
 
     private long persistInterval;
 
+    private long reporterInterval;
+
     private Persist persister;
 
-    private final MetricRegistry metricRegistry = new MetricRegistry();
+    private static final MetricRegistry metricRegistry = new MetricRegistry();
+    private Slf4jReporter reporter;
+
 
     private Metric() {
 
@@ -71,7 +74,14 @@ public class Metric implements Configurable, Lifecycle {
         persister = (Persist) Class.forName(persistName).newInstance();
         persister.setConf(conf);
 
+        reporterInterval = Long.valueOf(conf.get(METRIC_PERSIST_INTERVAL));
+        Preconditions.checkState(reporterInterval > 0,
+            METRIC_PERSIST_INTERVAL + " must be greater than zero");
+        LOGGER.info("metric reporter interval: {}", reporterInterval);
+
         saver = new Saver();
+
+        reporter = Slf4jReporter.forRegistry(metricRegistry).build();
     }
 
     @Override
@@ -85,6 +95,10 @@ public class Metric implements Configurable, Lifecycle {
         LOGGER.info("metric saver starting...");
         saver.start();
         LOGGER.info("metric saver started");
+
+        LOGGER.info("metric reporter starting...");
+        reporter.start(reporterInterval, TimeUnit.MILLISECONDS);
+        LOGGER.info("metric reporter started");
 
         LOGGER.info("metric started");
     }
@@ -106,7 +120,12 @@ public class Metric implements Configurable, Lifecycle {
         persister.stop();
         LOGGER.info("metric.perssiter stoped");
 
+        LOGGER.info("metric reporter stopping...");
+        reporter.stop();
+        LOGGER.info("metric reporter stopped");
+
         LOGGER.info("metric stoped");
+
     }
 
     public interface Persist extends Configurable, Lifecycle {
@@ -250,6 +269,10 @@ public class Metric implements Configurable, Lifecycle {
      */
     public com.codahale.metrics.Counter counter(String name) {
         return metricRegistry.counter(name);
+    }
+
+    public com.codahale.metrics.Metric register(String name, com.codahale.metrics.Metric metric){
+        return metricRegistry.register(name, metric);
     }
 
     public Histogram histogram(String name) {
