@@ -100,23 +100,10 @@ public class FileSource extends Source {
     }
     LOGGER.info("Property: {}={}", READ_ORDER, readOrder);
 
-    metric.register(MetricRegistry.name(name, "pending-files", "size"), new Gauge<Integer>() {
-      @Override
-      public Integer getValue() {
-        return fileQueue.size();
-      }
-    });
-
-    metric.register(MetricRegistry.name(name, "handled-and-handling-files", "size"), new Gauge<Integer>() {
-      @Override
-      public Integer getValue() {
-        return fileStatusMap.size();
-      }
-    });
-
+    metric.gauge(MetricRegistry.name(name, "pending-files", "size"), () -> fileQueue.size());
+    metric.gauge(MetricRegistry.name(name, "handled-and-handling-files", "size"), () -> fileStatusMap.size());
     meter = metric.meter(MetricRegistry.name(name, "read-lines", "tps"));
   }
-
 
   @Override
   public void start() {
@@ -136,7 +123,7 @@ public class FileSource extends Source {
     fileReader =
         Executors.newFixedThreadPool(
             threadNumber, new ThreadFactoryBuilder().setNameFormat("fileReader-pool-%d").build());
-    for (int i = 0; i < threadNumber; i++) {
+    for (int index = 0; index < threadNumber; index++) {
       fileReader.execute(new FileReaderRunnable(fileQueue));
     }
 
@@ -162,12 +149,23 @@ public class FileSource extends Source {
 
         if (matcher.find()) {
           FileStatus fileStatus = new FileStatus();
-          fileStatus.setPath(matcher.group(1));
-          fileStatus.setOffset(Long.valueOf(matcher.group(2)));
-          fileStatus.setCompleted(Boolean.parseBoolean(matcher.group(3)));
 
-          fileStatusMap.put(matcher.group(1), fileStatus);
-          LOGGER.info("put '{}' into map", fileStatus);
+          String filePath = matcher.group(1);
+          fileStatus.setPath(filePath);
+          fileStatus.setOffset(Long.valueOf(matcher.group(2)));
+
+          boolean isCompleted = Boolean.parseBoolean(matcher.group(3));
+          fileStatus.setCompleted(isCompleted);
+          fileStatusMap.put(filePath, fileStatus);
+
+          // 未读完的文件入队
+          if(!isCompleted){
+            File file = new File(filePath);
+            fileQueue.put(file);
+            LOGGER.info("{} enqueue", file);
+          }
+        } else {
+          LOGGER.error("'{}' format invalid", line);
         }
       }
       LOGGER.info("initial map size: {}", fileStatusMap.size());
@@ -242,15 +240,6 @@ public class FileSource extends Source {
         for (File item : targetDirectory.listFiles()) {
           // 筛选符合正则的文件
           if (item.isFile() && item.getName().matches(includePattern)) {
-            String filePath = item.getPath();
-            dirSet.add(filePath);
-
-            // 筛选未读的或者未读完的文件
-            if (!fileStatusMap.containsKey(filePath)
-                || (fileStatusMap.containsKey(filePath)
-                    && !(fileStatusMap.get(filePath).isCompleted()))) {
-              files.add(item);
-            }
 
             // 删除目录下过期文件
             if (System.currentTimeMillis() - item.lastModified() > retention * 1000) {
@@ -259,25 +248,37 @@ public class FileSource extends Source {
               } else {
                 LOGGER.error("delete expired file {} failed", item);
               }
+              continue;
+            }
+
+            String filePath = item.getPath();
+            dirSet.add(filePath);
+
+            // 筛选未读文件
+            if (!fileStatusMap.containsKey(filePath)) {
+              files.add(item);
             }
           }
         }
 
-        // 根据策略把未读的文件入队
+        // 文件排序
         if("desc".equals(readOrder)) {
           comparator = descComparator;
         }
         files.sort(comparator);
 
+        // 未读的文件入队
         for(File item : files){
           try {
             fileQueue.put(item);
             LOGGER.info("{} enqueue", item);
+
+            String filePath = item.getPath();
+            fileStatusMap.put(filePath, new FileStatus(filePath));
           } catch (InterruptedException e) {
             LOGGER.error("{} enqueue, but interrupted", item);
           }
         }
-
         LOGGER.info("queue size: {}", fileQueue.size());
 
         // 删除map中过期文件
@@ -340,26 +341,14 @@ public class FileSource extends Source {
 
           raf = new RandomAccessFile(filePath, "r");
 
-          FileStatus fileStatus;
-          String line;
-          long initOffset;
-
-          // 处理未读文件
-          if (!fileStatusMap.containsKey(filePath)) {
-            fileStatus = new FileStatus();
-            fileStatus.setPath(item.getPath());
-
-            fileStatusMap.put(filePath, fileStatus);
-
-            initOffset = 0;
-
-            // 处理未读完文件
-          } else {
-            fileStatus = fileStatusMap.get(filePath);
-            initOffset = fileStatus.getOffset();
+          FileStatus fileStatus = fileStatusMap.get(filePath);
+          if(fileStatus == null){
+            LOGGER.error("{} should in map, but not", filePath);
+            continue;
           }
+          raf.seek(fileStatus.getOffset());
 
-          raf.seek(initOffset);
+          String line;
           while ((line = raf.readLine()) != null && !fileReaderClosed.get()) {
             Message message = new Message(category, line);
             deliver(message);

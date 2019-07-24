@@ -13,6 +13,10 @@ public class FileStatus {
   public FileStatus() {
   }
 
+  public FileStatus(String path) {
+    this.path = path;
+  }
+
   public String getPath() {
     return path;
   }

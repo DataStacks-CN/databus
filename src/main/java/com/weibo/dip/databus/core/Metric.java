@@ -271,8 +271,8 @@ public class Metric implements Configurable, Lifecycle {
         return metricRegistry.counter(name);
     }
 
-    public com.codahale.metrics.Metric register(String name, com.codahale.metrics.Metric metric){
-        return metricRegistry.register(name, metric);
+    public Gauge gauge(String name, Gauge g){
+        return metricRegistry.gauge(name, () -> g);
     }
 
     public Histogram histogram(String name) {
