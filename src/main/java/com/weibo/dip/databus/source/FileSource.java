@@ -341,12 +341,13 @@ public class FileSource extends Source {
 
           raf = new RandomAccessFile(filePath, "r");
 
+          //可以用锁来替换？？
           FileStatus fileStatus = fileStatusMap.get(filePath);
           if(fileStatus == null){
-            LOGGER.error("{} should in map, but not", filePath);
-            continue;
+            LOGGER.warn("{} should in map, but not, so input", filePath);
+            fileStatusMap.putIfAbsent(filePath, new FileStatus(filePath));
           }
-          raf.seek(fileStatus.getOffset());
+          raf.seek(fileStatusMap.get(filePath).getOffset());
 
           String line;
           while ((line = raf.readLine()) != null && !fileReaderClosed.get()) {

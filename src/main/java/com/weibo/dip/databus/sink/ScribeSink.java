@@ -33,6 +33,8 @@ public class ScribeSink extends Sink {
   private static final Logger LOGGER = LoggerFactory.getLogger(ScribeSink.class);
   private String host;
   private int port;
+  private int batchSize;
+  private int sendInterval;
 
   private ConcurrentHashMap<Long, NetworkSender> senders = new ConcurrentHashMap<>();
 
@@ -63,6 +65,12 @@ public class ScribeSink extends Sink {
 
     port = conf.getInteger(PORT, DEFAULT_PORT);
     LOGGER.info("Property: {}={}", PORT, port);
+
+    batchSize = conf.getInteger(BATCH_SIZE, DEFAULT_BATCH_SIZE);
+    LOGGER.info("Property: {}={}", BATCH_SIZE, batchSize);
+
+    sendInterval = conf.getInteger(SEND_INTERVAL, DEFAULT_SEND_INTERVAL);
+    LOGGER.info("Property: {}={}", SEND_INTERVAL, sendInterval);
   }
 
   @Override
@@ -103,11 +111,16 @@ public class ScribeSink extends Sink {
       }
     }
 
+    List<LogEntry> entries = new ArrayList<>();
+    long lastTime = System.currentTimeMillis();
     public void send(LogEntry entry){
       try{
-        List<LogEntry> entries = new ArrayList<>();
         entries.add(entry);
-        client.Log(entries);
+        if(entries.size() >= batchSize || (System.currentTimeMillis() - lastTime) >= sendInterval){
+          client.Log(entries);
+          entries.clear();
+          lastTime = System.currentTimeMillis();
+        }
       }catch (Exception e){
         LOGGER.info("{}", ExceptionUtils.getStackTrace(e));
       }
