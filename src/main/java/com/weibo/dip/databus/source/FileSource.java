@@ -347,6 +347,7 @@ public class FileSource extends Source {
             LOGGER.warn("{} should in map, but not, so input", filePath);
             fileStatusMap.putIfAbsent(filePath, new FileStatus(filePath));
           }
+          fileStatus = fileStatusMap.get(filePath);
           raf.seek(fileStatusMap.get(filePath).getOffset());
 
           String line;
