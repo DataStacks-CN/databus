@@ -46,6 +46,10 @@ public class FileSource extends Source {
   private File targetDirectory;
   private File offsetFile;
   private Meter meter;
+  private Comparator<File> descComparator =
+      (File o1, File o2) -> (int) (o2.lastModified() - o1.lastModified());
+  private Comparator<File> ascComparator =
+      (File o1, File o2) -> (int) (o1.lastModified() - o2.lastModified());
 
   @Override
   public void setConf(Configuration conf) throws Exception {
@@ -101,7 +105,9 @@ public class FileSource extends Source {
     LOGGER.info("Property: {}={}", READ_ORDER, readOrder);
 
     metric.gauge(MetricRegistry.name(name, "pending-files", "size"), () -> fileQueue.size());
-    metric.gauge(MetricRegistry.name(name, "handled-and-handling-files", "size"), () -> fileStatusMap.size());
+    metric.gauge(
+        MetricRegistry.name(name, "handled-and-handling-files", "size"),
+        () -> fileStatusMap.size());
     meter = metric.meter(MetricRegistry.name(name, "read-lines", "tps"));
   }
 
@@ -159,7 +165,7 @@ public class FileSource extends Source {
           fileStatusMap.put(filePath, fileStatus);
 
           // 未读完的文件入队
-          if(!isCompleted){
+          if (!isCompleted) {
             File file = new File(filePath);
             fileQueue.put(file);
             LOGGER.info("{} enqueue", file);
@@ -262,13 +268,13 @@ public class FileSource extends Source {
         }
 
         // 文件排序
-        if("desc".equals(readOrder)) {
+        if ("desc".equals(readOrder)) {
           comparator = descComparator;
         }
         files.sort(comparator);
 
         // 未读的文件入队
-        for(File item : files){
+        for (File item : files) {
           try {
             fileQueue.put(item);
             LOGGER.info("{} enqueue", item);
@@ -296,20 +302,6 @@ public class FileSource extends Source {
       }
     }
   }
-
-  Comparator<File> descComparator = new Comparator<File>() {
-    @Override
-    public int compare(File o1, File o2) {
-      return (int)(o2.lastModified() - o1.lastModified());
-    }
-  };
-
-  Comparator<File> ascComparator = new Comparator<File>() {
-    @Override
-    public int compare(File o1, File o2) {
-      return (int)(o1.lastModified() - o2.lastModified());
-    }
-  };
 
   private class FileReaderRunnable implements Runnable {
     LinkedBlockingQueue<File> fileQueue;
@@ -341,9 +333,9 @@ public class FileSource extends Source {
 
           raf = new RandomAccessFile(filePath, "r");
 
-          //可以用锁来替换？？
+          // 可以用锁来替换？？
           FileStatus fileStatus = fileStatusMap.get(filePath);
-          if(fileStatus == null){
+          if (fileStatus == null) {
             LOGGER.warn("{} should in map, but not, so input", filePath);
             fileStatusMap.putIfAbsent(filePath, new FileStatus(filePath));
           }
