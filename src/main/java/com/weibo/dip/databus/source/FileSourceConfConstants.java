@@ -18,10 +18,10 @@ public class FileSourceConfConstants {
   public static final int DEFAULT_SCAN_INTERVAL = 30;
 
   public static final String FLUSH_INIT_DELAY = "source.file.flush.init.delay.second";
-  public static final int DEFAULT_FLUSH_INIT_DELAY = 10;
+  public static final int DEFAULT_FLUSH_INIT_DELAY = 60;
 
   public static final String FLUSH_INTERVAL = "source.file.flush.interval.second";
-  public static final int DEFAULT_FLUSH_INTERVAL = 10;
+  public static final int DEFAULT_FLUSH_INTERVAL = 60;
 
   public static final String RETENTION = "source.file.retention.second";
   public static final int DEFAULT_RETENTION = 86400;

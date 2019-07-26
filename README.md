@@ -34,7 +34,7 @@
 
 1. fileReader线程池从queue中获取文件并处理，一个文件由一个线程处理，并把文件状态更新到map
 
-1. offsetRecorder线程池定时把文件状态（map中的记录）刷到磁盘
+1. offsetRecorder线程池定时把文件状态（map中的记录）刷到磁盘，这样即使应用被kill，也保留了最近的文件状态
 
 ## 程序规则
 
