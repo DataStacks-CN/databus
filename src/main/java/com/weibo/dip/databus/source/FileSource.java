@@ -104,10 +104,7 @@ public class FileSource extends Source {
     }
     LOGGER.info("Property: {}={}", READ_ORDER, readOrder);
 
-    metric.gauge(MetricRegistry.name(name, "pending-files", "size"), () -> fileQueue.size());
-    metric.gauge(
-        MetricRegistry.name(name, "handled-and-handling-files", "size"),
-        () -> fileStatusMap.size());
+    metric.gauge(MetricRegistry.name(name, "fileQueue", "size"), () -> fileQueue.size());
     meter = metric.meter(MetricRegistry.name(name, "read-lines", "tps"));
   }
 

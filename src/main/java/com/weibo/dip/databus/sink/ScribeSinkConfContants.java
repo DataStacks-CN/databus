@@ -14,4 +14,16 @@ public class ScribeSinkConfContants {
 
   public static final String SEND_INTERVAL = "sink.scribe.max.send.interval";
   public static final int DEFAULT_SEND_INTERVAL = 1000;
+
+  public static final String CAPACITY = "sink.scribe.buffer.capacity";
+  public static final int DEFAULT_CAPACITY = 10000;
+
+  public static final String THREAD_NUMBER = "sink.scribe.thread.number";
+  public static final int DEFAULT_THREAD_NUMBER = 5;
+
+  public static final String WORKER_SLEEP = "sink.scribe.worker.sleep";
+  public static final int DEFAULT_WORKER_SLEEP = 30000;
+
+  public static final String CHECK_INTERVAL = "sink.scribe.check.interval.second";
+  public static final int DEFAULT_CHECK_INTERVAL = 60;
 }
