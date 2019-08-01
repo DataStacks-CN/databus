@@ -13,6 +13,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -155,7 +158,7 @@ public class FileSource extends Source {
 
           String filePath = matcher.group(1);
           fileStatus.setPath(filePath);
-          fileStatus.setOffset(Long.valueOf(matcher.group(2)));
+          fileStatus.setOffset(Integer.valueOf(matcher.group(2)));
 
           boolean isCompleted = Boolean.parseBoolean(matcher.group(3));
           fileStatus.setCompleted(isCompleted);
@@ -311,6 +314,8 @@ public class FileSource extends Source {
     public void run() {
       while (!fileReaderClosed.get()) {
         RandomAccessFile raf = null;
+        FileChannel fc = null;
+        MappedByteBuffer mbb = null;
 
         try {
           File item = fileQueue.poll(1, TimeUnit.SECONDS);
@@ -329,6 +334,8 @@ public class FileSource extends Source {
           String filePath = item.getPath();
 
           raf = new RandomAccessFile(filePath, "r");
+          fc = raf.getChannel();
+          mbb = fc.map(FileChannel.MapMode.READ_ONLY, 0, item.length());
 
           // 是否可以用锁来替换？？
           if (fileStatusMap.get(filePath) == null) {
@@ -336,15 +343,18 @@ public class FileSource extends Source {
             fileStatusMap.putIfAbsent(filePath, new FileStatus(filePath));
           }
           FileStatus fileStatus = fileStatusMap.get(filePath);
-          raf.seek(fileStatus.getOffset());
+          mbb.position(fileStatus.getOffset());
+
+          LOGGER.info("capacity:{}, position:{}, limit:{}, remaining:{}", mbb.capacity(), mbb.position(), mbb.limit(), mbb.remaining());
 
           String line;
-          while ((line = raf.readLine()) != null && !fileReaderClosed.get()) {
+          while (mbb.remaining() > 0 && !fileReaderClosed.get()) {
+            line = readLine(mbb);
             Message message = new Message(category, line);
             deliver(message);
             meter.mark();
 
-            fileStatus.setOffset(raf.getFilePointer());
+            fileStatus.setOffset(mbb.position());
           }
 
           if (!fileReaderClosed.get()) {
@@ -355,6 +365,9 @@ public class FileSource extends Source {
           LOGGER.error("read logFile error: {}", ExceptionUtils.getStackTrace(e));
         } finally {
           try {
+            if(fc != null){
+              fc.close();
+            }
             if (raf != null) {
               raf.close();
             }
@@ -363,6 +376,34 @@ public class FileSource extends Source {
           }
         }
       }
+    }
+
+    public String readLine(MappedByteBuffer mbb){
+      StringBuilder line = new StringBuilder();
+      int c = -1;
+      boolean eol = false;
+
+      while (!eol){
+        switch (c = mbb.get()){
+          case '\n':
+            eol = true;
+            break;
+          case '\r':
+            eol = true;
+            break;
+          default:
+            line.append((char)c);
+            if(mbb.remaining() == 0){
+              eol = true;
+            }
+            break;
+        }
+      }
+
+      if((c == -1) && (line.length() == 0)){
+        return null;
+      }
+      return line.toString();
     }
   }
 
