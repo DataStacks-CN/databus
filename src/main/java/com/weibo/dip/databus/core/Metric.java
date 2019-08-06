@@ -105,27 +105,26 @@ public class Metric implements Configurable, Lifecycle {
 
     @Override
     public void stop() {
-        LOGGER.info("metric stoping...");
+        LOGGER.info("metric stopping...");
 
-        LOGGER.info("metric.saver stoping");
+        LOGGER.info("metric.saver stopping");
         saver.interrupt();
         try {
             saver.join();
         } catch (InterruptedException e) {
             LOGGER.warn("metric saver await for termination, but interrupted");
         }
-        LOGGER.info("metric.saver stoped");
+        LOGGER.info("metric.saver stopped");
 
-        LOGGER.info("metric.persister stoping...");
+        LOGGER.info("metric.persister stopping...");
         persister.stop();
-        LOGGER.info("metric.perssiter stoped");
+        LOGGER.info("metric.perssiter stopped");
 
         LOGGER.info("metric reporter stopping...");
         reporter.stop();
         LOGGER.info("metric reporter stopped");
 
-        LOGGER.info("metric stoped");
-
+        LOGGER.info("metric stopped");
     }
 
     public interface Persist extends Configurable, Lifecycle {

@@ -22,8 +22,14 @@ public class ScribeSinkConfContants {
   public static final int DEFAULT_THREAD_NUMBER = 5;
 
   public static final String WORKER_SLEEP = "sink.scribe.worker.sleep";
-  public static final int DEFAULT_WORKER_SLEEP = 30000;
+  public static final int DEFAULT_WORKER_SLEEP = 10000;
 
   public static final String CHECK_INTERVAL = "sink.scribe.check.interval.second";
   public static final int DEFAULT_CHECK_INTERVAL = 60;
+
+  public static final String POLL_TIMEOUT = "sink.scribe.poll.timeout";
+  public static final int DEFAULT_POLL_TIMEOUT = 2000;
+
+  public static final String SOCKET_TIMEOUT = "sink.scribe.socket.timeout";
+  public static final int DEFAULT_SOCKET_TIMEOUT = 60000;
 }

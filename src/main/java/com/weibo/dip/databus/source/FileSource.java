@@ -1,6 +1,7 @@
 package com.weibo.dip.databus.source;
 
-import com.codahale.metrics.*;
+import com.codahale.metrics.Meter;
+import com.codahale.metrics.MetricRegistry;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.weibo.dip.databus.core.Configuration;
@@ -15,7 +16,6 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -226,6 +226,9 @@ public class FileSource extends Source {
     // 确保最新的fileStatusMap内容刷到磁盘
     new OffsetRecorderRunnable().run();
 
+    metric.remove(MetricRegistry.name(name, "fileQueue", "size"));
+    metric.remove(MetricRegistry.name(name, "read-lines", "tps"));
+
     LOGGER.info("{} stopped", name);
   }
 
@@ -345,11 +348,20 @@ public class FileSource extends Source {
           FileStatus fileStatus = fileStatusMap.get(filePath);
           mbb.position(fileStatus.getOffset());
 
-          LOGGER.info("capacity:{}, position:{}, limit:{}, remaining:{}", mbb.capacity(), mbb.position(), mbb.limit(), mbb.remaining());
+          LOGGER.info(
+              "{} position:{}, capacity:{}, limit:{}, remaining:{}",
+              filePath,
+              mbb.position(),
+              mbb.capacity(),
+              mbb.limit(),
+              mbb.remaining());
 
           String line;
           while (mbb.remaining() > 0 && !fileReaderClosed.get()) {
             line = readLine(mbb);
+            if (line == null) {
+              continue;
+            }
             Message message = new Message(category, line);
             deliver(message);
             meter.mark();
@@ -365,11 +377,14 @@ public class FileSource extends Source {
           LOGGER.error("read logFile error: {}", ExceptionUtils.getStackTrace(e));
         } finally {
           try {
-            if(fc != null){
+            if (fc != null) {
               fc.close();
             }
             if (raf != null) {
               raf.close();
+            }
+            if (mbb != null) {
+              mbb.clear();
             }
           } catch (IOException e) {
             LOGGER.error("close RandomAccessFile error: {}", ExceptionUtils.getStackTrace(e));
@@ -378,13 +393,13 @@ public class FileSource extends Source {
       }
     }
 
-    public String readLine(MappedByteBuffer mbb){
+    public String readLine(MappedByteBuffer mbb) {
       StringBuilder line = new StringBuilder();
       int c = -1;
       boolean eol = false;
 
-      while (!eol){
-        switch (c = mbb.get()){
+      while (!eol) {
+        switch (c = mbb.get()) {
           case '\n':
             eol = true;
             break;
@@ -392,15 +407,15 @@ public class FileSource extends Source {
             eol = true;
             break;
           default:
-            line.append((char)c);
-            if(mbb.remaining() == 0){
+            line.append((char) c);
+            if (mbb.remaining() == 0) {
               eol = true;
             }
             break;
         }
       }
 
-      if((c == -1) && (line.length() == 0)){
+      if ((c == -1) && (line.length() == 0)) {
         return null;
       }
       return line.toString();

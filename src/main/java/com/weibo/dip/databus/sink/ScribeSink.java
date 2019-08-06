@@ -18,11 +18,12 @@ import org.apache.thrift.transport.TTransport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.weibo.dip.databus.sink.ScribeSinkConfContants.*;
@@ -33,7 +34,7 @@ public class ScribeSink extends Sink {
   private static final Logger LOGGER = LoggerFactory.getLogger(ScribeSink.class);
   private final AtomicBoolean senderClosed = new AtomicBoolean(false);
   private ExecutorService sender;
-  private LinkedBlockingQueue<LogEntry> recordQueue = new LinkedBlockingQueue<>();
+  private LinkedBlockingQueue<LogEntry> recordQueue;
   private String host;
   private int port;
   private int batchSize;
@@ -41,9 +42,8 @@ public class ScribeSink extends Sink {
   private int capacity;
   private int threadNumber;
   private int workerSleep;
-  private int checkInterval;
-  private ConcurrentHashMap<Integer, TTransport> sockets = new ConcurrentHashMap<>();
-  private ScheduledExecutorService socketManager;
+  private int pollTimeout;
+  private int socketTimeout;
 
   @Override
   public void process(Message message) throws Exception {
@@ -52,11 +52,7 @@ public class ScribeSink extends Sink {
     }
     LogEntry entry = new LogEntry(message.getTopic(), message.getData());
 
-    if (recordQueue.size() > capacity) {
-      Thread.sleep(1000);
-    } else {
-      recordQueue.put(entry);
-    }
+    recordQueue.put(entry);
   }
 
   @Override
@@ -86,8 +82,11 @@ public class ScribeSink extends Sink {
     workerSleep = conf.getInteger(WORKER_SLEEP, DEFAULT_WORKER_SLEEP);
     LOGGER.info("Property: {}={}", WORKER_SLEEP, workerSleep);
 
-    checkInterval = conf.getInteger(CHECK_INTERVAL, DEFAULT_CHECK_INTERVAL);
-    LOGGER.info("Property: {}={}", CHECK_INTERVAL, checkInterval);
+    pollTimeout = conf.getInteger(POLL_TIMEOUT, DEFAULT_POLL_TIMEOUT);
+    LOGGER.info("Property: {}={}", POLL_TIMEOUT, pollTimeout);
+
+    socketTimeout = conf.getInteger(SOCKET_TIMEOUT, DEFAULT_SOCKET_TIMEOUT);
+    LOGGER.info("Property: {}={}", SOCKET_TIMEOUT, socketTimeout);
 
     metric.gauge(MetricRegistry.name(name, "recordQueue", "size"), () -> recordQueue.size());
   }
@@ -96,22 +95,13 @@ public class ScribeSink extends Sink {
   public void start() {
     LOGGER.info("{} starting...", name);
 
-    socketManager =
-        Executors.newSingleThreadScheduledExecutor(
-            new ThreadFactoryBuilder().setNameFormat("socketManager-pool-%d").build());
-    socketManager.scheduleWithFixedDelay(new SocketManagerRunnable(), 0, checkInterval, TimeUnit.SECONDS);
-
-    try {
-      Thread.sleep(3000);
-    } catch (InterruptedException e) {
-      LOGGER.warn("thread is sleeping, but interrupted: {}", ExceptionUtils.getStackTrace(e));
-    }
+    recordQueue = new LinkedBlockingQueue<>(capacity);
 
     sender =
         Executors.newFixedThreadPool(
             threadNumber, new ThreadFactoryBuilder().setNameFormat("sender-pool-%d").build());
-    for (int index = 0; index < threadNumber; index++) {
-      sender.execute(new NetworkSender(index));
+    for (int i = 0; i < threadNumber; i++) {
+      sender.execute(new NetworkSender());
     }
 
     LOGGER.info("{} started", name);
@@ -120,16 +110,6 @@ public class ScribeSink extends Sink {
   @Override
   public void stop() {
     LOGGER.info("{} stopping...", name);
-
-    socketManager.shutdown();
-    try {
-      while (!socketManager.awaitTermination(THREAD_POOL_AWAIT_TIMEOUT, TimeUnit.SECONDS)) {
-        LOGGER.info("{} socketManager await termination", name);
-      }
-    } catch (InterruptedException e) {
-      LOGGER.warn("{} socketManager await termination, but interrupted", name);
-    }
-    LOGGER.info("{} socketManager stopped", name);
 
     senderClosed.set(true);
     sender.shutdown();
@@ -142,98 +122,81 @@ public class ScribeSink extends Sink {
     }
     LOGGER.info("{} sender stopped", name);
 
+    metric.remove(MetricRegistry.name(name, "recordQueue", "size"));
+
     LOGGER.info("{} stopped", name);
   }
 
-  public class SocketManagerRunnable implements Runnable {
-
-    @Override
-    public void run() {
-      LOGGER.info("socket number: {}", sockets.size());
-
-      // 从map中删除已经关闭的socket
-      for (Map.Entry<Integer, TTransport> item : sockets.entrySet()) {
-        TTransport transport = item.getValue();
-        if (!transport.isOpen()) {
-          transport.close();
-          sockets.remove(item.getKey());
-          LOGGER.warn("socket-{} is closed", item.getKey());
-        }
-      }
-
-      // 补全map的socket连接
-      for (int index = 0; index < threadNumber; index++) {
-        if (sockets.containsKey(index)) {
-          continue;
-        }
-
-        try {
-          TTransport transport = new TFramedTransport(new TSocket(new Socket(host, port)));
-          sockets.put(index, transport);
-
-          LOGGER.info("initial socket-{} completed", index);
-        } catch (Exception e) {
-          LOGGER.error("initial socket-{} fail: {}", index, ExceptionUtils.getStackTrace(e));
-        }
-      }
-    }
-  }
-
   public class NetworkSender implements Runnable {
-    int index;
-    TTransport transport;
+    Scribe.Client client = null;
+    TTransport transport = null;
     List<LogEntry> entries = new ArrayList<>();
     long lastTime = System.currentTimeMillis();
 
-    public NetworkSender(int index) {
-      this.index = index;
+    public NetworkSender() {
+      initClient();
+    }
+
+    private void initClient() {
+      try {
+        transport = new TFramedTransport(new TSocket(host, port, socketTimeout));
+        transport.open();
+        client = new Scribe.Client(new TBinaryProtocol(transport, false, false));
+
+        LOGGER.info("open transport and initial Scribe.Client completed");
+      } catch (Exception e) {
+        LOGGER.error(
+            "open transport or initial Scribe.Client fail: {}", ExceptionUtils.getStackTrace(e));
+        closeSocket();
+      }
     }
 
     @Override
     public void run() {
-      transport = sockets.get(index);
-      Scribe.Client client = new Scribe.Client(new TBinaryProtocol(transport));
-      LOGGER.info("initial Scribe.Client: {}-{}-{}", client, transport, index);
-
-      while (!senderClosed.get()) {
+      // 当标志位为true且队列为空时退出循环
+      while (!senderClosed.get() || recordQueue.size() > 0) {
         try {
-          LOGGER.info("{}", recordQueue.size());
-          LogEntry entry = recordQueue.poll(2000, TimeUnit.MILLISECONDS);
-          LOGGER.info("{}", entry);
-
+          LogEntry entry = recordQueue.poll(pollTimeout, TimeUnit.MILLISECONDS);
           if (entry != null) {
             entries.add(entry);
           }
 
           if (entries.size() >= batchSize
-              || ((System.currentTimeMillis() - lastTime) >= sendInterval && entries.size() > 0)) {
-
-            LOGGER.info("send entries: {}", entries.size());
+              || (System.currentTimeMillis() - lastTime) >= sendInterval) {
             client.Log(entries);
 
             entries.clear();
             lastTime = System.currentTimeMillis();
           }
-          LOGGER.info("{}", entries.size());
-
+        } catch (InterruptedException e) {
+          LOGGER.warn("{}", ExceptionUtils.getStackTrace(e));
         } catch (Exception e) {
-          LOGGER.warn("socket may be close: {}", ExceptionUtils.getStackTrace(e));
+          LOGGER.warn("send entry error {}", ExceptionUtils.getStackTrace(e));
+
           try {
+            LOGGER.info(
+                "socket maybe timeout, close socket and reconnect, transport.isOpen:{}",
+                transport.isOpen());
+
+            closeSocket();
             Thread.sleep(workerSleep);
+            initClient();
           } catch (InterruptedException e1) {
-            LOGGER.warn("{} sender await termination, but interrupted", name);
+            LOGGER.warn("{}", ExceptionUtils.getStackTrace(e1));
+          } catch (Exception e1) {
+            LOGGER.error("{}", ExceptionUtils.getStackTrace(e1));
           }
-          transport = sockets.get(index);
-          client = new Scribe.Client(new TBinaryProtocol(transport));
-          LOGGER.info(
-              "reconnect socket and initial Scribe.Client: {}-{}-{}", client, transport, index);
         }
       }
 
+      closeSocket();
+    }
+
+    private void closeSocket() {
       if (transport != null) {
         transport.close();
-        LOGGER.info("{} closed", transport);
       }
+      LOGGER.info("transport closed");
     }
   }
 }
