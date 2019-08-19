@@ -29,5 +29,11 @@ public class FileSourceConfConstants {
   public static final String READ_ORDER = "source.file.read.order";
   public static final String DEFAULT_READ_ORDER = "asc";
 
+  public static final String BUFFER_SIZE = "source.file.buffer.size";
+  public static final int DEFAULT_BUFFER_SIZE = 1024 * 1024;
+
+  public static final String LINE_BUFFER_SIZE = "source.file.line.buffer.size";
+  public static final int DEFAULT_LINE_BUFFER_SIZE = 1024;
+
   public static final int THREAD_POOL_AWAIT_TIMEOUT = 30;
 }

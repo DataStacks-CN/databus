@@ -14,8 +14,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -31,6 +33,7 @@ import static com.weibo.dip.databus.source.FileSourceConfConstants.*;
 public class FileSource extends Source {
   private static final Logger LOGGER = LoggerFactory.getLogger(FileSource.class);
   private static final String FILE_STATUS_PATTERN = "(\\S+) (\\S+) (\\S+)";
+  private static final Integer SIZE = 1024*1024;
   private final AtomicBoolean fileReaderClosed = new AtomicBoolean(false);
   private LinkedBlockingQueue<File> fileQueue = new LinkedBlockingQueue<>();
   private ScheduledExecutorService fileScanner;
@@ -44,6 +47,8 @@ public class FileSource extends Source {
   private int flushInterval;
   private int flushInitDelay;
   private int retention;
+  private int bufferSize;
+  private int lineBufferSize;
   private String readOrder;
 
   private File targetDirectory;
@@ -107,8 +112,14 @@ public class FileSource extends Source {
     }
     LOGGER.info("Property: {}={}", READ_ORDER, readOrder);
 
+    bufferSize = conf.getInteger(BUFFER_SIZE, DEFAULT_BUFFER_SIZE);
+    LOGGER.info("Property: {}={}", BUFFER_SIZE, bufferSize);
+
+    lineBufferSize = conf.getInteger(LINE_BUFFER_SIZE, DEFAULT_LINE_BUFFER_SIZE);
+    LOGGER.info("Property: {}={}", LINE_BUFFER_SIZE, lineBufferSize);
+
     metric.gauge(MetricRegistry.name(name, "fileQueue", "size"), () -> fileQueue.size());
-    meter = metric.meter(MetricRegistry.name(name, "read-lines", "tps"));
+    meter = metric.meter(MetricRegistry.name(name, "readLines", "tps"));
   }
 
   @Override
@@ -158,7 +169,7 @@ public class FileSource extends Source {
 
           String filePath = matcher.group(1);
           fileStatus.setPath(filePath);
-          fileStatus.setOffset(Integer.valueOf(matcher.group(2)));
+          fileStatus.setOffset(Long.valueOf(matcher.group(2)));
 
           boolean isCompleted = Boolean.parseBoolean(matcher.group(3));
           fileStatus.setCompleted(isCompleted);
@@ -227,7 +238,7 @@ public class FileSource extends Source {
     new OffsetRecorderRunnable().run();
 
     metric.remove(MetricRegistry.name(name, "fileQueue", "size"));
-    metric.remove(MetricRegistry.name(name, "read-lines", "tps"));
+    metric.remove(MetricRegistry.name(name, "readLines", "tps"));
 
     LOGGER.info("{} stopped", name);
   }
@@ -318,7 +329,6 @@ public class FileSource extends Source {
       while (!fileReaderClosed.get()) {
         RandomAccessFile raf = null;
         FileChannel fc = null;
-        MappedByteBuffer mbb = null;
 
         try {
           File item = fileQueue.poll(1, TimeUnit.SECONDS);
@@ -332,41 +342,47 @@ public class FileSource extends Source {
             LOGGER.error("{} not file", item);
             continue;
           }
-
           LOGGER.info("{} dequeue", item);
+
           String filePath = item.getPath();
-
-          raf = new RandomAccessFile(filePath, "r");
-          fc = raf.getChannel();
-          mbb = fc.map(FileChannel.MapMode.READ_ONLY, 0, item.length());
-
           // 是否可以用锁来替换？？
           if (fileStatusMap.get(filePath) == null) {
             LOGGER.warn("{} should in map, but not, so input", filePath);
             fileStatusMap.putIfAbsent(filePath, new FileStatus(filePath));
           }
           FileStatus fileStatus = fileStatusMap.get(filePath);
-          mbb.position(fileStatus.getOffset());
 
-          LOGGER.info(
-              "{} position:{}, capacity:{}, limit:{}, remaining:{}",
-              filePath,
-              mbb.position(),
-              mbb.capacity(),
-              mbb.limit(),
-              mbb.remaining());
+          raf = new RandomAccessFile(filePath, "r");
+          fc = raf.getChannel();
 
-          String line;
-          while (mbb.remaining() > 0 && !fileReaderClosed.get()) {
-            line = readLine(mbb);
-            if (line == null) {
-              continue;
+          long currPos = fileStatus.getOffset();
+          fc.position(currPos);
+
+          ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
+          ByteBuffer lineBuffer = ByteBuffer.allocate(lineBufferSize);
+
+          while (fc.read(buffer) != -1 && !fileReaderClosed.get()){
+            buffer.flip();
+            while (buffer.hasRemaining()){
+              byte b = buffer.get();
+              if(b == '\n' || b == '\r'){
+                sendLine(lineBuffer);
+                fileStatus.setOffset(fc.position());
+              }else {
+                //若空间不够则扩容
+                if(!lineBuffer.hasRemaining()){
+                  lineBuffer = reAllocate(lineBuffer);
+                }
+                lineBuffer.put(b);
+              }
             }
-            Message message = new Message(category, line);
-            deliver(message);
-            meter.mark();
+            buffer.clear();
+          }
 
-            fileStatus.setOffset(mbb.position());
+          // 处理最后一行
+          if (lineBuffer.position() > 0 && !fileReaderClosed.get()) {
+            sendLine(lineBuffer);
+            fileStatus.setOffset(fc.position());
           }
 
           if (!fileReaderClosed.get()) {
@@ -383,9 +399,6 @@ public class FileSource extends Source {
             if (raf != null) {
               raf.close();
             }
-            if (mbb != null) {
-              mbb.clear();
-            }
           } catch (IOException e) {
             LOGGER.error("close RandomAccessFile error: {}", ExceptionUtils.getStackTrace(e));
           }
@@ -393,32 +406,21 @@ public class FileSource extends Source {
       }
     }
 
-    public String readLine(MappedByteBuffer mbb) {
-      StringBuilder line = new StringBuilder();
-      int c = -1;
-      boolean eol = false;
+    private void sendLine(ByteBuffer lineBuffer) {
+      lineBuffer.flip();
 
-      while (!eol) {
-        switch (c = mbb.get()) {
-          case '\n':
-            eol = true;
-            break;
-          case '\r':
-            eol = true;
-            break;
-          default:
-            line.append((char) c);
-            if (mbb.remaining() == 0) {
-              eol = true;
-            }
-            break;
-        }
-      }
+      String line = Charset.forName("UTF-8").decode(lineBuffer).toString();
+      deliver(new Message(category, line));
+      meter.mark();
 
-      if ((c == -1) && (line.length() == 0)) {
-        return null;
-      }
-      return line.toString();
+      lineBuffer.clear();
+    }
+
+    private ByteBuffer reAllocate(ByteBuffer buffer) {
+      int capacity = buffer.capacity();
+      byte[] newBuffer = new byte[capacity * 2];
+      System.arraycopy(buffer.array(), 0, newBuffer, 0, capacity);
+      return (ByteBuffer) ByteBuffer.wrap(newBuffer).position(capacity);
     }
   }
 

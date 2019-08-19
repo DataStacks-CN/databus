@@ -7,7 +7,7 @@ import java.util.Objects;
  */
 public class FileStatus {
   private String path;
-  private int offset;
+  private long offset;
   private boolean isCompleted;
 
   public FileStatus() {
@@ -25,11 +25,11 @@ public class FileStatus {
     this.path = path;
   }
 
-  public int getOffset() {
+  public long getOffset() {
     return offset;
   }
 
-  public void setOffset(int offset) {
+  public void setOffset(long offset) {
     this.offset = offset;
   }
 
