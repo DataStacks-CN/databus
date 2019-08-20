@@ -15,7 +15,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.nio.ByteBuffer;
-import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -33,7 +32,6 @@ import static com.weibo.dip.databus.source.FileSourceConfConstants.*;
 public class FileSource extends Source {
   private static final Logger LOGGER = LoggerFactory.getLogger(FileSource.class);
   private static final String FILE_STATUS_PATTERN = "(\\S+) (\\S+) (\\S+)";
-  private static final Integer SIZE = 1024*1024;
   private final AtomicBoolean fileReaderClosed = new AtomicBoolean(false);
   private LinkedBlockingQueue<File> fileQueue = new LinkedBlockingQueue<>();
   private ScheduledExecutorService fileScanner;
@@ -357,32 +355,41 @@ public class FileSource extends Source {
 
           long currPos = fileStatus.getOffset();
           fc.position(currPos);
+          LOGGER.debug("origin position: {}", currPos);
 
           ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
           ByteBuffer lineBuffer = ByteBuffer.allocate(lineBufferSize);
 
-          while (fc.read(buffer) != -1 && !fileReaderClosed.get()){
+          int bytesRead = fc.read(buffer);
+          while (bytesRead != -1 && !fileReaderClosed.get()) {
+            currPos = fc.position() - bytesRead;
+
             buffer.flip();
-            while (buffer.hasRemaining()){
+            while (buffer.hasRemaining()) {
               byte b = buffer.get();
-              if(b == '\n' || b == '\r'){
+              currPos++;
+              if (b == '\n' || b == '\r') {
                 sendLine(lineBuffer);
-                fileStatus.setOffset(fc.position());
-              }else {
-                //若空间不够则扩容
-                if(!lineBuffer.hasRemaining()){
+                fileStatus.setOffset(currPos);
+                LOGGER.debug("fileChannel position: {}", currPos);
+              } else {
+                // 若空间不够则扩容
+                if (!lineBuffer.hasRemaining()) {
                   lineBuffer = reAllocate(lineBuffer);
                 }
                 lineBuffer.put(b);
               }
             }
             buffer.clear();
+
+            bytesRead = fc.read(buffer);
           }
 
           // 处理最后一行
           if (lineBuffer.position() > 0 && !fileReaderClosed.get()) {
             sendLine(lineBuffer);
             fileStatus.setOffset(fc.position());
+            LOGGER.debug("fileChannel position: {}", fc.position());
           }
 
           if (!fileReaderClosed.get()) {
