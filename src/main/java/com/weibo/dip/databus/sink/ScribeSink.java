@@ -18,6 +18,8 @@ import org.apache.thrift.transport.TTransport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -25,7 +27,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static com.weibo.dip.databus.sink.ScribeSinkConfContants.*;
 import static com.weibo.dip.databus.source.FileSourceConfConstants.THREAD_POOL_AWAIT_TIMEOUT;
@@ -45,13 +46,14 @@ public class ScribeSink extends Sink {
   private int workerSleep;
   private int pollTimeout;
   private int socketTimeout;
+  private String prefix;
 
   @Override
   public void process(Message message) throws Exception {
     if (StringUtils.isEmpty(message.getData())) {
       return;
     }
-    LogEntry entry = new LogEntry(message.getTopic(), message.getData());
+    LogEntry entry = new LogEntry(message.getTopic(), prefix + message.getData());
 
     recordQueue.put(entry);
   }
@@ -90,6 +92,13 @@ public class ScribeSink extends Sink {
     LOGGER.info("Property: {}={}", SOCKET_TIMEOUT, socketTimeout);
 
     metric.gauge(MetricRegistry.name(name, "recordQueue", "size"), () -> recordQueue.size());
+
+    try {
+      String ip = InetAddress.getLocalHost().getHostAddress();
+      prefix = "_accesskey=&_ip=" + ip + "&_port=&_an=&_data=";
+    } catch (UnknownHostException e) {
+      LOGGER.warn("{}", ExceptionUtils.getStackTrace(e));
+    }
   }
 
   @Override
@@ -193,7 +202,7 @@ public class ScribeSink extends Sink {
       // 发送最后一批数据
       try {
         client.Log(entries);
-        LOGGER.debug("last send: {}", entries.size());
+        LOGGER.debug("last send lines: {}", entries.size());
       } catch (Exception e) {
         LOGGER.warn("send entry error: {}", ExceptionUtils.getStackTrace(e));
       }
