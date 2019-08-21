@@ -25,6 +25,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static com.weibo.dip.databus.sink.ScribeSinkConfContants.*;
 import static com.weibo.dip.databus.source.FileSourceConfConstants.THREAD_POOL_AWAIT_TIMEOUT;
@@ -171,7 +172,7 @@ public class ScribeSink extends Sink {
         } catch (InterruptedException e) {
           LOGGER.warn("{}", ExceptionUtils.getStackTrace(e));
         } catch (Exception e) {
-          LOGGER.warn("send entry error {}", ExceptionUtils.getStackTrace(e));
+          LOGGER.warn("send entry error: {}", ExceptionUtils.getStackTrace(e));
 
           try {
             LOGGER.info(
@@ -187,6 +188,14 @@ public class ScribeSink extends Sink {
             LOGGER.error("{}", ExceptionUtils.getStackTrace(e1));
           }
         }
+      }
+
+      // 发送最后一批数据
+      try {
+        client.Log(entries);
+        LOGGER.debug("last send: {}", entries.size());
+      } catch (Exception e) {
+        LOGGER.warn("send entry error: {}", ExceptionUtils.getStackTrace(e));
       }
 
       closeSocket();

@@ -371,7 +371,6 @@ public class FileSource extends Source {
               if (b == '\n' || b == '\r') {
                 sendLine(lineBuffer);
                 fileStatus.setOffset(currPos);
-                LOGGER.debug("fileChannel position: {}", currPos);
               } else {
                 // 若空间不够则扩容
                 if (!lineBuffer.hasRemaining()) {
