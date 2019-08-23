@@ -48,7 +48,7 @@ public class FileSource extends Source {
   private int bufferSize;
   private int lineBufferSize;
   private String readOrder;
-
+  private boolean deleteAfterRead;
   private File targetDirectory;
   private File offsetFile;
   private Meter meter;
@@ -115,6 +115,9 @@ public class FileSource extends Source {
 
     lineBufferSize = conf.getInteger(LINE_BUFFER_SIZE, DEFAULT_LINE_BUFFER_SIZE);
     LOGGER.info("Property: {}={}", LINE_BUFFER_SIZE, lineBufferSize);
+
+    deleteAfterRead = conf.getBoolean(DELETE_AFTER_READ, DEFAULT_DELETE_AFTER_READ);
+    LOGGER.info("Property: {}={}", DELETE_AFTER_READ, deleteAfterRead);
 
     metric.gauge(MetricRegistry.name(name, "fileQueue", "size"), () -> fileQueue.size());
     meter = metric.meter(MetricRegistry.name(name, "readLines", "tps"));
@@ -394,6 +397,14 @@ public class FileSource extends Source {
           if (!fileReaderClosed.get()) {
             fileStatus.setCompleted(true);
             LOGGER.info("read {} completed", filePath);
+
+            if (deleteAfterRead) {
+              if (item.delete()) {
+                LOGGER.info("read completed and delete {} success", item);
+              } else {
+                LOGGER.error("read completed but delete {} failed", item);
+              }
+            }
           }
         } catch (Exception e) {
           LOGGER.error("read logFile error: {}", ExceptionUtils.getStackTrace(e));

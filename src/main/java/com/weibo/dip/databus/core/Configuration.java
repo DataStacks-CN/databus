@@ -108,4 +108,14 @@ public class Configuration {
         return defaultValue;
     }
 
+    public boolean getBoolean(String key, boolean defaultValue){
+        String value = get(key);
+
+        if(value != null){
+            return Boolean.parseBoolean(value.trim());
+        }
+
+        return defaultValue;
+    }
+
 }

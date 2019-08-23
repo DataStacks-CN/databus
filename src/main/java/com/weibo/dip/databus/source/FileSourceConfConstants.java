@@ -35,5 +35,8 @@ public class FileSourceConfConstants {
   public static final String LINE_BUFFER_SIZE = "source.file.line.buffer.size";
   public static final int DEFAULT_LINE_BUFFER_SIZE = 1024;
 
+  public static final String DELETE_AFTER_READ = "source.file.delete.after.read";
+  public static final boolean DEFAULT_DELETE_AFTER_READ = false;
+
   public static final int THREAD_POOL_AWAIT_TIMEOUT = 30;
 }
