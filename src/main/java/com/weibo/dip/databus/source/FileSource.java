@@ -158,6 +158,9 @@ public class FileSource extends Source {
   private void loadOffsetFile() {
     BufferedReader in = null;
     Pattern pattern = Pattern.compile(FILE_STATUS_PATTERN);
+    ArrayList<File> files = new ArrayList<>();
+    Comparator<File> comparator = ascComparator;
+
     try {
       in = new BufferedReader(new InputStreamReader(new FileInputStream(offsetFile)));
 
@@ -176,17 +179,31 @@ public class FileSource extends Source {
           fileStatus.setCompleted(isCompleted);
           fileStatusMap.put(filePath, fileStatus);
 
-          // 未读完的文件入队
+          // 筛选未读完的文件
           if (!isCompleted) {
-            File file = new File(filePath);
-            fileQueue.put(file);
-            LOGGER.info("{} enqueue", file);
+            files.add(new File(filePath));
           }
         } else {
           LOGGER.error("'{}' format invalid", line);
         }
       }
       LOGGER.info("initial map size: {}", fileStatusMap.size());
+
+      // 文件排序
+      if ("desc".equals(readOrder)) {
+        comparator = descComparator;
+      }
+      files.sort(comparator);
+
+      // 文件入队
+      for (File file : files) {
+        try {
+          fileQueue.put(file);
+          LOGGER.info("{} enqueue", file);
+        } catch (InterruptedException e) {
+          LOGGER.error("{} enqueue, but interrupted", file);
+        }
+      }
     } catch (Exception e) {
       throw new RuntimeException("read offsetFile error: " + ExceptionUtils.getStackTrace(e));
     } finally {
