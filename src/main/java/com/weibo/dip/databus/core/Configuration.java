@@ -88,34 +88,51 @@ public class Configuration {
         return value;
     }
 
-    public String get(String key, String defaultValue){
+    public String getString(String key, String defaultValue){
         String value = get(key);
-
         if(value != null){
-            return value;
+            return value.trim();
         }
-
         return defaultValue;
     }
 
     public Integer getInteger(String key, Integer defaultValue){
         String value = get(key);
-
         if(value != null){
             return Integer.parseInt(value.trim());
         }
-
         return defaultValue;
     }
 
     public boolean getBoolean(String key, boolean defaultValue){
         String value = get(key);
-
         if(value != null){
             return Boolean.parseBoolean(value.trim());
         }
-
         return defaultValue;
     }
 
+    public Long getLong(String key, Long defaultValue){
+        String value = get(key);
+        if(value != null){
+            return Long.parseLong(value.trim());
+        }
+        return defaultValue;
+    }
+
+    public Float getFloat(String key, Float defaultValue){
+        String value = get(key);
+        if (value != null) {
+            return Float.parseFloat(value.trim());
+        }
+        return defaultValue;
+    }
+
+    public Double getDouble(String key, Double defaultValue) {
+        String value = get(key);
+        if (value != null) {
+            return Double.parseDouble(value.trim());
+        }
+        return defaultValue;
+    }
 }

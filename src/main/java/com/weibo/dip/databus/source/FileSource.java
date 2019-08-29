@@ -89,7 +89,7 @@ public class FileSource extends Source {
     threadNumber = conf.getInteger(THREAD_NUMBER, DEFAULT_THREAD_NUMBER);
     LOGGER.info("Property: {}={}", THREAD_NUMBER, threadNumber);
 
-    includePattern = conf.get(INCLUDE_PATTERN, DEFAULT_INCLUDE_PATTERN);
+    includePattern = conf.getString(INCLUDE_PATTERN, DEFAULT_INCLUDE_PATTERN);
     LOGGER.info("Property: {}={}", INCLUDE_PATTERN, includePattern);
 
     scanInterval = conf.getInteger(SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL);
@@ -104,7 +104,7 @@ public class FileSource extends Source {
     retention = conf.getInteger(RETENTION, DEFAULT_RETENTION);
     LOGGER.info("Property: {}={}", RETENTION, retention);
 
-    readOrder = conf.get(READ_ORDER, DEFAULT_READ_ORDER);
+    readOrder = conf.getString(READ_ORDER, DEFAULT_READ_ORDER);
     if (!"desc".equals(readOrder) && !"asc".equals(readOrder)) {
       throw new Exception(READ_ORDER + " should be desc or asc");
     }
