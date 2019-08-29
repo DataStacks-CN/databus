@@ -23,8 +23,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.weibo.dip.databus.sink.KafkaSinkV010ConfConstants.*;
-import static com.weibo.dip.databus.sink.ScribeSinkConfContants.DEFAULT_POLL_TIMEOUT;
-import static com.weibo.dip.databus.sink.ScribeSinkConfContants.POLL_TIMEOUT;
 import static com.weibo.dip.databus.source.FileSourceConfConstants.THREAD_POOL_AWAIT_TIMEOUT;
 
 /**
