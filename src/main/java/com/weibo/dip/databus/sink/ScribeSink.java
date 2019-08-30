@@ -94,13 +94,13 @@ public class ScribeSink extends Sink {
 
     metric.gauge(MetricRegistry.name(name, "recordQueue", "size"), () -> recordQueue.size());
 
-    String ip = null;
+    String hostname = null;
     try {
-      ip = InetAddress.getLocalHost().getHostAddress();
+      hostname = InetAddress.getLocalHost().getHostName();
     } catch (UnknownHostException e) {
       LOGGER.warn("{}", ExceptionUtils.getStackTrace(e));
     }
-    prefix = "_accesskey=&_ip=" + ip + "&_port=&_an=&_data=";
+    prefix = hostname + "|";
   }
 
   @Override
