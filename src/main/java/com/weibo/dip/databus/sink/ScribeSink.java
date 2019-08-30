@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -37,13 +38,13 @@ public class ScribeSink extends Sink {
   private final AtomicBoolean senderClosed = new AtomicBoolean(false);
   private ExecutorService sender;
   private LinkedBlockingQueue<LogEntry> recordQueue;
-  private String host;
+  private String hosts;
   private int port;
   private int batchSize;
   private int sendInterval;
   private int capacity;
   private int threadNumber;
-  private int workerSleep;
+  private long workerSleep;
   private int pollTimeout;
   private int socketTimeout;
   private String prefix;
@@ -62,10 +63,10 @@ public class ScribeSink extends Sink {
   public void setConf(Configuration conf) throws Exception {
     name = conf.get(Constants.PIPELINE_NAME) + Constants.HYPHEN + this.getClass().getSimpleName();
 
-    host = conf.get(HOST);
+    hosts = conf.get(HOSTS);
     Preconditions.checkState(
-        StringUtils.isNotEmpty(host), String.format("%s %s must be specified", name, HOST));
-    LOGGER.info("Property: {}={}", HOST, host);
+        StringUtils.isNotEmpty(hosts), String.format("%s %s must be specified", name, HOSTS));
+    LOGGER.info("Property: {}={}", HOSTS, hosts);
 
     port = conf.getInteger(PORT, DEFAULT_PORT);
     LOGGER.info("Property: {}={}", PORT, port);
@@ -82,7 +83,7 @@ public class ScribeSink extends Sink {
     threadNumber = conf.getInteger(THREAD_NUMBER, DEFAULT_THREAD_NUMBER);
     LOGGER.info("Property: {}={}", THREAD_NUMBER, threadNumber);
 
-    workerSleep = conf.getInteger(WORKER_SLEEP, DEFAULT_WORKER_SLEEP);
+    workerSleep = conf.getLong(WORKER_SLEEP, DEFAULT_WORKER_SLEEP);
     LOGGER.info("Property: {}={}", WORKER_SLEEP, workerSleep);
 
     pollTimeout = conf.getInteger(POLL_TIMEOUT, DEFAULT_POLL_TIMEOUT);
@@ -143,23 +144,40 @@ public class ScribeSink extends Sink {
     TTransport transport = null;
     List<LogEntry> entries = new ArrayList<>();
     long lastTime = System.currentTimeMillis();
+    ArrayList<String> hostArray;
 
     public NetworkSender() {
       initClient();
     }
 
+    // 随机获取一个host建立socket连接，从而保证服务端负载均衡
     private void initClient() {
-      try {
-        transport = new TFramedTransport(new TSocket(host, port, socketTimeout));
-        transport.open();
-        client = new Scribe.Client(new TBinaryProtocol(transport, false, false));
+      hostArray = new ArrayList<>(Arrays.asList(hosts.split(Constants.COMMA)));
+      do {
+        String host = hostArray.get((int) (Math.random() * hostArray.size()));
+        try {
+          transport = new TFramedTransport(new TSocket(host, port, socketTimeout));
+          transport.open();
+          client = new Scribe.Client(new TBinaryProtocol(transport, false, false));
 
-        LOGGER.info("open transport and initial Scribe.Client completed");
-      } catch (Exception e) {
-        LOGGER.error(
-            "open transport or initial Scribe.Client fail: {}", ExceptionUtils.getStackTrace(e));
-        closeSocket();
-      }
+          LOGGER.info("open transport and initial Scribe.Client completed, {}:{}", host, port);
+        } catch (Exception e) {
+          LOGGER.error(
+              "open transport or initial Scribe.Client fail: {}", ExceptionUtils.getStackTrace(e));
+          closeSocket();
+          hostArray.remove(host);
+        }
+
+        if(hostArray.size() == 0 && !transport.isOpen()){
+          LOGGER.error("can not connect anyone socket, {}:{}, so sleep sometime and reconnect", hosts, port);
+          try {
+            Thread.sleep(workerSleep);
+          } catch (InterruptedException e) {
+            LOGGER.warn("{}", ExceptionUtils.getStackTrace(e));
+          }
+          hostArray = new ArrayList<>(Arrays.asList(hosts.split(Constants.COMMA)));
+        }
+      } while (hostArray.size() > 0 && !transport.isOpen());
     }
 
     @Override
@@ -190,10 +208,7 @@ public class ScribeSink extends Sink {
                 transport.isOpen());
 
             closeSocket();
-            Thread.sleep(workerSleep);
             initClient();
-          } catch (InterruptedException e1) {
-            LOGGER.warn("{}", ExceptionUtils.getStackTrace(e1));
           } catch (Exception e1) {
             LOGGER.error("{}", ExceptionUtils.getStackTrace(e1));
           }
