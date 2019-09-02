@@ -21,7 +21,8 @@ start(){
     echo $prepare
     echo `$prepare`
     echo "starting databus:"
-    cmd="nohup $JAVA_HOME/bin/java $JAVA_OPTS $JAVA_JMX -cp $CLASSPATH $APP_MAINCLASS > /dev/null 2>&1 &"
+#    cmd="nohup $JAVA_HOME/bin/java $JAVA_OPTS $JAVA_JMX -cp $CLASSPATH $APP_MAINCLASS > /dev/null 2>&1 &"
+    cmd="nohup $JAVA_HOME/bin/java $JAVA_OPTS -cp $CLASSPATH $APP_MAINCLASS > /dev/null 2>&1 &"
     echo $cmd
     echo `su -c "$cmd"`
 }
