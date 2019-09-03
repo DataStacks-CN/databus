@@ -11,7 +11,7 @@ public class Constants {
 
     public static final String DATABUS_STOPFILE = "databus.stopfile";
 
-    public static final long SUPERVISOR_SLEEP = 10000;
+    public static final long SUPERVISOR_SLEEP = 2000;
 
     public static final String PROPERTIES = "properties";
 

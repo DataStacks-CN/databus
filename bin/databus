@@ -41,8 +41,24 @@ stop(){
 
 restart(){
     stop
-    sleep 10
-    start
+    n=20
+    sum=0
+    sleep_time=1
+    while [[ $output != "" && $sum -lt `expr $n \* $sleep_time` ]]
+    do
+        sleep $sleep_time
+        sum=`expr $sleep_time + $sum`
+        echo "databus stopping, elapsed $sum seconds"
+        output=`ps aux | grep com.weibo.dip.databus.DatabusDriver | grep -v grep`
+    done
+    if [[ $output = "" ]]
+    then
+        echo "databus stopped"
+        sleep 2
+        start
+    else
+        echo "restart timeout!"
+    fi
 }
 
 status(){
