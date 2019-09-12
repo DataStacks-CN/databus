@@ -3,7 +3,7 @@ package com.weibo.dip.databus.sink;
 /**
  * Created by jianhong1 on 2019-07-10.
  */
-public class ScribeSinkConfContants {
+public class ScribeSinkConfConstants {
   public static final String HOSTS = "sink.scribe.server.hosts";
 
   public static final String PORT = "sink.scribe.server.port";
@@ -22,7 +22,7 @@ public class ScribeSinkConfContants {
   public static final int DEFAULT_THREAD_NUMBER = 5;
 
   public static final String WORKER_SLEEP = "sink.scribe.worker.sleep";
-  public static final long DEFAULT_WORKER_SLEEP = 600000;
+  public static final long DEFAULT_WORKER_SLEEP = 60000;
 
   public static final String POLL_TIMEOUT = "sink.scribe.poll.timeout";
   public static final int DEFAULT_POLL_TIMEOUT = 1000;

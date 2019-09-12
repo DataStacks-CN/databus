@@ -29,7 +29,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.weibo.dip.databus.sink.ScribeSinkConfContants.*;
+import static com.weibo.dip.databus.sink.ScribeSinkConfConstants.*;
 import static com.weibo.dip.databus.source.FileSourceConfConstants.THREAD_POOL_AWAIT_TIMEOUT;
 
 /** Created by jianhong1 on 2019-07-10. */

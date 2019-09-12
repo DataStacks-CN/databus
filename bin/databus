@@ -2,6 +2,8 @@
 
 # Created by jianhong1 on 2019-08-27.
 
+# chkconfig: 2345 57 27
+
 JAVA_HOME="/usr/local/dip/jdk1.8.0_144"
 JAVA_OPTS="-Xms512M -Xmx1G"
 JAVA_JMX="-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.port=8999"

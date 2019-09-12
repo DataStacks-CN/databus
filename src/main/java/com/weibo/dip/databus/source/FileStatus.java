@@ -1,7 +1,5 @@
 package com.weibo.dip.databus.source;
 
-import java.util.Objects;
-
 /**
  * Created by jianhong1 on 2019-07-09.
  */
