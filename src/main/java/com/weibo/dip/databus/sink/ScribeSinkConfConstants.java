@@ -19,7 +19,7 @@ public class ScribeSinkConfConstants {
   public static final int DEFAULT_CAPACITY = 1000;
 
   public static final String THREAD_NUMBER = "sink.scribe.thread.number";
-  public static final int DEFAULT_THREAD_NUMBER = 5;
+  public static final int DEFAULT_THREAD_NUMBER = 6;
 
   public static final String WORKER_SLEEP = "sink.scribe.worker.sleep";
   public static final long DEFAULT_WORKER_SLEEP = 60000;
@@ -29,4 +29,7 @@ public class ScribeSinkConfConstants {
 
   public static final String SOCKET_TIMEOUT = "sink.scribe.socket.timeout";
   public static final int DEFAULT_SOCKET_TIMEOUT = 60000;
+
+  public static final String RETRY_TIME = "sink.scribe.retry.time";
+  public static final int DEFAULT_RETRY_TIME = 3;
 }

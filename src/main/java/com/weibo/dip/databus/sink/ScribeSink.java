@@ -48,6 +48,7 @@ public class ScribeSink extends Sink {
   private int pollTimeout;
   private int socketTimeout;
   private String prefix;
+  private int retryTime;
 
   @Override
   public void process(Message message) throws Exception {
@@ -91,6 +92,9 @@ public class ScribeSink extends Sink {
 
     socketTimeout = conf.getInteger(SOCKET_TIMEOUT, DEFAULT_SOCKET_TIMEOUT);
     LOGGER.info("Property: {}={}", SOCKET_TIMEOUT, socketTimeout);
+
+    retryTime = conf.getInteger(RETRY_TIME, DEFAULT_RETRY_TIME);
+    LOGGER.info("Property: {}={}", RETRY_TIME, retryTime);
 
     metric.gauge(MetricRegistry.name(name, "recordQueue", "size"), () -> recordQueue.size());
 
@@ -145,39 +149,51 @@ public class ScribeSink extends Sink {
     List<LogEntry> entries = new ArrayList<>();
     long lastTime = System.currentTimeMillis();
     ArrayList<String> hostArray;
+    String host;
+    int times;
 
-    public NetworkSender() {
-      initClient();
+    private NetworkSender() {
+      hostArray = new ArrayList<>(Arrays.asList(hosts.split(Constants.COMMA)));
+      do {
+        initClient();
+      } while (!transport.isOpen() && ++times < retryTime);
+      if (times >= retryTime) {
+        throw new RuntimeException("init client failed times exceed retry times:" + retryTime);
+      }
     }
 
     // 随机获取一个host建立socket连接，从而保证服务端负载均衡
     private void initClient() {
-      hostArray = new ArrayList<>(Arrays.asList(hosts.split(Constants.COMMA)));
-      do {
-        String host = hostArray.get((int) (Math.random() * hostArray.size()));
+      host = hostArray.get((int) (Math.random() * hostArray.size()));
+      try {
+        transport = new TFramedTransport(new TSocket(host, port, socketTimeout));
+        transport.open();
+        client = new Scribe.Client(new TBinaryProtocol(transport, false, false));
+
+        LOGGER.info("open transport and initial Scribe.Client completed, {}:{}", host, port);
+      } catch (Exception e) {
+        LOGGER.error(
+            "open transport or initial Scribe.Client fail, {}:{}, {}",
+            host,
+            port,
+            ExceptionUtils.getStackTrace(e));
+        closeSocket();
+        hostArray.remove(host);
+      }
+
+      if (hostArray.size() == 0 && !transport.isOpen()) {
+        LOGGER.error(
+            "can not connect any socket, {}:{}, so sleep {} ms and reconnect",
+            hosts,
+            port,
+            workerSleep);
         try {
-          transport = new TFramedTransport(new TSocket(host, port, socketTimeout));
-          transport.open();
-          client = new Scribe.Client(new TBinaryProtocol(transport, false, false));
-
-          LOGGER.info("open transport and initial Scribe.Client completed, {}:{}", host, port);
-        } catch (Exception e) {
-          LOGGER.error(
-              "open transport or initial Scribe.Client fail: {}", ExceptionUtils.getStackTrace(e));
-          closeSocket();
-          hostArray.remove(host);
+          Thread.sleep(workerSleep);
+        } catch (InterruptedException e) {
+          LOGGER.warn("{}", ExceptionUtils.getStackTrace(e));
         }
-
-        if(hostArray.size() == 0 && !transport.isOpen()){
-          LOGGER.error("can not connect anyone socket, {}:{}, so sleep sometime and reconnect", hosts, port);
-          try {
-            Thread.sleep(workerSleep);
-          } catch (InterruptedException e) {
-            LOGGER.warn("{}", ExceptionUtils.getStackTrace(e));
-          }
-          hostArray = new ArrayList<>(Arrays.asList(hosts.split(Constants.COMMA)));
-        }
-      } while (hostArray.size() > 0 && !transport.isOpen());
+        hostArray = new ArrayList<>(Arrays.asList(hosts.split(Constants.COMMA)));
+      }
     }
 
     @Override
@@ -208,7 +224,9 @@ public class ScribeSink extends Sink {
                 transport.isOpen());
 
             closeSocket();
-            initClient();
+            while (!transport.isOpen() && !senderClosed.get()) {
+              initClient();
+            }
           } catch (Exception e1) {
             LOGGER.error("{}", ExceptionUtils.getStackTrace(e1));
           }
@@ -230,7 +248,7 @@ public class ScribeSink extends Sink {
       if (transport != null) {
         transport.close();
       }
-      LOGGER.info("transport closed");
+      LOGGER.info("transport closed, {}:{}", host, port);
     }
   }
 }

@@ -1,1 +1,1 @@
-32 4 */1 * * root find /data0/log/databus/log/ -type f -mtime +6 | xargs rm -f
+32 4 * * * root find /data0/log/databus/log/ -type f -mtime +6 | xargs rm -f
