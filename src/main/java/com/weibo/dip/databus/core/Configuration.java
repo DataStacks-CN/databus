@@ -2,10 +2,7 @@ package com.weibo.dip.databus.core;
 
 import java.io.*;
 import java.nio.charset.Charset;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -134,5 +131,16 @@ public class Configuration {
             return Double.parseDouble(value.trim());
         }
         return defaultValue;
+    }
+
+    public Set<String> getKeys(){
+        Set<String> set;
+        lock.readLock().lock();
+        try{
+            set = properties.keySet();
+        } finally {
+            lock.readLock().unlock();
+        }
+        return set;
     }
 }

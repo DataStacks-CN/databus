@@ -38,7 +38,7 @@ public class Metric implements Configurable, Lifecycle {
 
     private long reporterInterval;
 
-    private Persist persister;
+    private List<Persist> persists = new ArrayList<>();
 
     private static final MetricRegistry metricRegistry = new MetricRegistry();
     private Slf4jReporter reporter;
@@ -71,8 +71,13 @@ public class Metric implements Configurable, Lifecycle {
         Preconditions.checkState(StringUtils.isNotEmpty(persistName),
             METRIC_PERSIST_CLASS + " must be specified");
 
-        persister = (Persist) Class.forName(persistName).newInstance();
-        persister.setConf(conf);
+        String[] names = persistName.split(Constants.COMMA);
+        for (String name: names){
+            Persist persist = (Persist) Class.forName(name).newInstance();
+            persist.setConf(conf);
+
+            persists.add(persist);
+        }
 
         reporterInterval = Long.valueOf(conf.get(METRIC_PERSIST_INTERVAL));
         Preconditions.checkState(reporterInterval > 0,
@@ -89,7 +94,9 @@ public class Metric implements Configurable, Lifecycle {
         LOGGER.info("metric starting...");
 
         LOGGER.info("metric.persister starting...");
-        persister.start();
+        for (Persist persist : persists){
+            persist.start();
+        }
         LOGGER.info("metric.persister started");
 
         LOGGER.info("metric saver starting...");
@@ -117,7 +124,9 @@ public class Metric implements Configurable, Lifecycle {
         LOGGER.info("metric.saver stopped");
 
         LOGGER.info("metric.persister stopping...");
-        persister.stop();
+        for (Persist persist : persists){
+            persist.stop();
+        }
         LOGGER.info("metric.perssiter stopped");
 
         LOGGER.info("metric reporter stopping...");
@@ -159,7 +168,9 @@ public class Metric implements Configurable, Lifecycle {
             lock.writeLock().unlock();
 
             try {
-                persister.persist(counters);
+                for (Persist persist : persists){
+                    persist.persist(counters);
+                }
             } catch (Exception e) {
                 LOGGER.error("metric persist error: " + ExceptionUtils.getStackTrace(e));
             }
