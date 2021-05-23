@@ -4,12 +4,12 @@
 
 # chkconfig: 2345 57 27
 
-JAVA_HOME="/usr/local/dip/jdk1.8.0_144"
+JAVA_HOME="/usr/local/jdk1.8.0_144"
 JAVA_OPTS="-Xms512M -Xmx1G"
 JAVA_JMX="-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.port=8999"
-CLASSPATH="/usr/local/dip/databus/edge-conf/:/usr/local/dip/databus/target/databus-1.0.0.jar:/usr/local/dip/databus/target/lib/*"
+CLASSPATH="/data0/workspace/databus/conf/:/data0/workspace/databus/target/databus-1.0.0.jar:/data0/workspace/databus/target/lib/*"
 APP_MAINCLASS="com.weibo.dip.databus.DatabusDriver"
-STOP_FILE="/usr/local/dip/databus/pipelines/stop.file"
+STOP_FILE="/data0/workspace/databus/pipelines/stop.file"
 
 output=`ps aux | grep com.weibo.dip.databus.DatabusDriver | grep -v grep`
 
